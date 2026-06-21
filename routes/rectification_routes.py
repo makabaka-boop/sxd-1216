@@ -305,7 +305,10 @@ def reassign_rectification(record_id):
 
 
 def _sync_overdue(rect):
-    if rect.get("status") == RectificationStatus.COMPLETED:
+    if rect.get("status") in (
+        RectificationStatus.COMPLETED,
+        RectificationStatus.PENDING_ACCEPT,
+    ):
         return
     deadline = rect.get("plan_deadline")
     if not deadline:

@@ -106,7 +106,10 @@ def enrich_rectification(rectification):
 
 
 def _update_overdue_status(rectification):
-    if rectification.get("status") in (RectificationStatus.COMPLETED,):
+    if rectification.get("status") in (
+        RectificationStatus.COMPLETED,
+        RectificationStatus.PENDING_ACCEPT,
+    ):
         return
     deadline = rectification.get("plan_deadline")
     if not deadline:
@@ -189,13 +192,13 @@ def _key_deduction_trigger(inspection):
 
 
 def determine_triggers(inspection, context="close"):
+    if context == "review":
+        return [RectificationTrigger.REVIEW_UPHELD]
     triggers = []
     if _low_score_trigger(inspection):
         triggers.append(RectificationTrigger.LOW_SCORE)
     if _key_deduction_trigger(inspection):
         triggers.append(RectificationTrigger.KEY_DEDUCTION)
-    if context == "review" and triggers:
-        triggers = [RectificationTrigger.REVIEW_UPHELD]
     return triggers
 
 
