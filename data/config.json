@@ -1,0 +1,9 @@
+{
+  "sampling_ratio": 0.1,
+  "appeal_deadline_hours": 48,
+  "review_deadline_hours": 72,
+  "low_score_threshold": 80,
+  "risk_low_score_ratio": 0.3,
+  "risk_min_sample": 3,
+  "frequent_item_threshold": 3
+}

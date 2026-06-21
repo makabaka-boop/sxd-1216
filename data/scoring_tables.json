@@ -1,0 +1,41 @@
+[
+  {
+    "id": "st_2b3a7ff32dea",
+    "name": "通用质检评分表",
+    "business_line_id": null,
+    "total_score": 100,
+    "items": [
+      {
+        "id": "si_open",
+        "name": "开场白规范",
+        "max_score": 10
+      },
+      {
+        "id": "si_attitude",
+        "name": "服务态度",
+        "max_score": 20
+      },
+      {
+        "id": "si_solve",
+        "name": "问题解决能力",
+        "max_score": 30
+      },
+      {
+        "id": "si_lang",
+        "name": "服务用语规范",
+        "max_score": 20
+      },
+      {
+        "id": "si_close",
+        "name": "结束语规范",
+        "max_score": 10
+      },
+      {
+        "id": "si_process",
+        "name": "流程合规",
+        "max_score": 10
+      }
+    ],
+    "created_at": "2026-06-21T09:15:26"
+  }
+]
