@@ -58,9 +58,10 @@ class Storage:
     def insert(self, name, record):
         with self._file_lock:
             data = self.read(name)
-            data.append(record)
+            stored = dict(record)
+            data.append(stored)
             self.write(name, data)
-            return record
+            return dict(stored)
 
     def update(self, name, record_id, patch):
         with self._file_lock:
@@ -76,19 +77,19 @@ class Storage:
     def find(self, name, record_id):
         for rec in self.read(name):
             if rec.get("id") == record_id:
-                return rec
+                return dict(rec)
         return None
 
     def find_one(self, name, predicate):
         for rec in self.read(name):
             if predicate(rec):
-                return rec
+                return dict(rec)
         return None
 
     def find_all(self, name, predicate=None):
         if predicate is None:
-            return list(self.read(name))
-        return [r for r in self.read(name) if predicate(r)]
+            return [dict(r) for r in self.read(name)]
+        return [dict(r) for r in self.read(name) if predicate(r)]
 
     def seed_defaults(self):
         if self._seeded:

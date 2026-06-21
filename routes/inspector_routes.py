@@ -12,7 +12,6 @@ bp = Blueprint("inspector", __name__, url_prefix="/api/inspector")
 def _has_active_inspection(call_id, exclude_id=None):
     return storage.find_one("inspections", lambda i: (
         i.get("call_id") == call_id
-        and i.get("status") != Status.CLOSED
         and i.get("id") != exclude_id
     ))
 
@@ -38,7 +37,7 @@ def create_inspection():
     if not call_id:
         return fail("通话编号不能为空")
     if _has_active_inspection(call_id):
-        return fail("该通话已存在未结案的抽检记录，避免重复抽检", 409)
+        return fail("该通话已存在抽检记录，避免重复抽检", 409)
     scoring_table_id = body.get("scoring_table_id")
     if not scoring_table_id:
         table = storage.find_one("scoring_tables", lambda s: True)
@@ -74,9 +73,13 @@ def start_inspection(record_id):
         return fail("抽检记录不存在", 404)
     if insp["status"] != Status.PENDING_INSPECTION:
         return fail("当前状态无法开始质检")
+    owner = insp.get("inspector_id")
+    me = g.current_user["id"]
+    if owner and owner != me:
+        return fail("该抽检记录已分配给其他质检员，您无权处理", 403)
     insp = storage.update("inspections", record_id, {
         "status": Status.INSPECTING,
-        "inspector_id": g.current_user["id"],
+        "inspector_id": me,
         "inspected_at": now_iso(),
     })
     enrich_inspection(insp)
@@ -90,6 +93,9 @@ def submit_inspection(record_id):
     insp = storage.find("inspections", record_id)
     if not insp:
         return fail("抽检记录不存在", 404)
+    me = g.current_user["id"]
+    if insp.get("inspector_id") and insp["inspector_id"] != me:
+        return fail("该抽检记录归属其他质检员，您无权提交", 403)
     if insp["status"] not in (Status.PENDING_INSPECTION, Status.INSPECTING):
         return fail("当前状态无法提交质检结果")
     deductions = body.get("deductions") or []
@@ -114,7 +120,7 @@ def submit_inspection(record_id):
         "suggestion": body.get("suggestion"),
         "relisten": bool(body.get("relisten", False)),
         "total_score": total_score,
-        "inspector_id": g.current_user["id"],
+        "inspector_id": me,
         "inspected_at": insp.get("inspected_at") or now_iso(),
         "submitted_at": now_iso(),
     }

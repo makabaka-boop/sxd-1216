@@ -1,32 +1,32 @@
 [
   {
-    "id": "u_74fc7d212b35",
+    "id": "u_8ba6473269ee",
     "username": "admin",
     "password": "admin123",
     "role": "admin",
     "name": "系统管理员",
     "business_line_id": null,
     "seat_group_id": null,
-    "created_at": "2026-06-21T09:15:26"
+    "created_at": "2026-06-21T10:22:55"
   },
   {
-    "id": "u_c86a72ce055d",
+    "id": "u_1648477145bd",
     "username": "inspector",
     "password": "inspector123",
     "role": "inspector",
     "name": "质检员A",
     "business_line_id": null,
     "seat_group_id": null,
-    "created_at": "2026-06-21T09:15:26"
+    "created_at": "2026-06-21T10:22:55"
   },
   {
-    "id": "u_2c7bbab6eebd",
+    "id": "u_44026b5fb229",
     "username": "leader",
     "password": "leader123",
     "role": "team_lead",
     "name": "客服组长A",
     "business_line_id": null,
     "seat_group_id": null,
-    "created_at": "2026-06-21T09:15:26"
+    "created_at": "2026-06-21T10:22:55"
   }
 ]

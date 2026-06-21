@@ -17,8 +17,8 @@ def submit_review():
     insp = storage.find("inspections", inspection_id) if inspection_id else None
     if not insp:
         return fail("抽检记录不存在", 404)
-    if insp["status"] not in (Status.PENDING_REVIEW, Status.APPEAL_PROCESSING):
-        return fail("该记录当前状态不可复核")
+    if insp["status"] != Status.PENDING_REVIEW:
+        return fail("仅待复核状态可提交复核结论")
     if g.current_user["role"] == Role.INSPECTOR and insp.get("inspector_id") == g.current_user["id"]:
         return fail("不可复核本人提交的质检记录")
     conclusion = (body.get("conclusion") or "").strip()
