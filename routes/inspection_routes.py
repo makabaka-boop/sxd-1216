@@ -4,7 +4,7 @@ from auth import login_required, admin_required
 from constants import Status
 from storage import storage
 from utils import ok, fail, parse_args, paginate, get_json_body
-from inspection_common import enrich_inspection, auto_create_rectification
+from inspection_common import enrich_inspection, auto_create_rectification, enrich_inspection_recurrence
 
 bp = Blueprint("inspection", __name__, url_prefix="/api/inspections")
 
@@ -42,6 +42,25 @@ def list_inspections():
         items = [i for i in items if i.get("created_at", "") >= args["start_date"]]
     if args.get("end_date"):
         items = [i for i in items if i.get("created_at", "") <= args["end_date"]]
+
+    for i in items:
+        enrich_inspection_recurrence(i)
+
+    if args.get("is_recurrence") in ("1", "true", "True"):
+        items = [i for i in items if i.get("is_recurrence")]
+    elif args.get("is_recurrence") in ("0", "false", "False"):
+        items = [i for i in items if not i.get("is_recurrence")]
+    if args.get("recurrence_item_id"):
+        target = args["recurrence_item_id"]
+        items = [i for i in items if any(
+            it.get("item_id") == target for it in (i.get("recurrence_items") or [])
+        )]
+    if args.get("recurrence_count_min") is not None and args.get("recurrence_count_min") != "":
+        try:
+            rc_min = int(args["recurrence_count_min"])
+            items = [i for i in items if int(i.get("recurrence_count") or 0) >= rc_min]
+        except ValueError:
+            return fail("recurrence_count_min 必须为整数")
 
     items.sort(key=lambda i: i.get("created_at", ""), reverse=True)
     for i in items:

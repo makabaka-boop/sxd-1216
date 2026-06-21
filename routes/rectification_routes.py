@@ -11,7 +11,7 @@ from constants import (
 )
 from storage import storage, now_iso
 from utils import ok, fail, get_json_body, parse_args, paginate
-from inspection_common import enrich_rectification, manual_create_rectification
+from inspection_common import enrich_rectification, manual_create_rectification, enrich_rectification_recurrence
 
 bp = Blueprint("rectification", __name__, url_prefix="/api/rectifications")
 
@@ -45,6 +45,26 @@ def _filter_rectifications(items, args, user=None):
         items = [r for r in items if r.get("created_at", "") >= args["start_date"]]
     if args.get("end_date"):
         items = [r for r in items if r.get("created_at", "") <= args["end_date"]]
+
+    for r in items:
+        enrich_rectification_recurrence(r)
+
+    if args.get("is_recurrence") in ("1", "true", "True"):
+        items = [r for r in items if r.get("is_recurrence")]
+    elif args.get("is_recurrence") in ("0", "false", "False"):
+        items = [r for r in items if not r.get("is_recurrence")]
+    if args.get("recurrence_item_id"):
+        target = args["recurrence_item_id"]
+        items = [r for r in items if any(
+            it.get("item_id") == target for it in (r.get("recurrence_items") or [])
+        )]
+    if args.get("recurrence_count_min") is not None and args.get("recurrence_count_min") != "":
+        try:
+            rc_min = int(args["recurrence_count_min"])
+            items = [r for r in items if int(r.get("recurrence_count") or 0) >= rc_min]
+        except ValueError:
+            return fail("recurrence_count_min 必须为整数")
+
     if user and user["role"] == Role.TEAM_LEAD:
         items = [r for r in items if r.get("assignee_id") == user["id"]]
     return items

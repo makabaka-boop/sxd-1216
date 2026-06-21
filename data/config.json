@@ -11,5 +11,8 @@
   "rectify_auto_trigger_key_deduction": true,
   "key_deduction_item_ids": [],
   "key_deduction_threshold_score": 5,
-  "repeat_rectify_threshold": 2
+  "repeat_rectify_threshold": 2,
+  "recurrence_observation_days": 60,
+  "recurrence_criteria": "seat_group_item",
+  "recurrence_alert_threshold": 3
 }

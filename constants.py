@@ -130,6 +130,9 @@ DEFAULT_CONFIG = {
     "key_deduction_item_ids": [],
     "key_deduction_threshold_score": 5,
     "repeat_rectify_threshold": 2,
+    "recurrence_observation_days": 30,
+    "recurrence_criteria": "seat_group_item",
+    "recurrence_alert_threshold": 2,
 }
 
 DATA_FILES = {

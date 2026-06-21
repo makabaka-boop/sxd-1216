@@ -34,12 +34,18 @@ def create_app():
     def index():
         return jsonify({
             "name": "客服中心质检抽检系统",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "endpoints": [
                 "/api/auth/login", "/api/auth/me",
                 "/api/admin/*", "/api/inspector/*", "/api/appeals",
                 "/api/reviews", "/api/inspections", "/api/stats/*", "/api/risk/alerts",
                 "/api/rectifications/*",
+            ],
+            "new_features": [
+                "整改复发跟踪：抽检/整改列表与详情增加复发标识、复发次数、复发项、历史关联",
+                "复发配置：观察天数、判定口径、预警阈值",
+                "风险预警新增整改复发预警（按业务线/坐席组/扣分项）",
+                "统计模块新增复发概览、排行与趋势",
             ],
             "default_users": {
                 "admin": "admin123",

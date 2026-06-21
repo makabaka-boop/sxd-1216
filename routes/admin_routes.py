@@ -208,9 +208,14 @@ def update_config():
               "frequent_item_threshold", "rectify_deadline_hours",
               "rectify_auto_trigger_low_score", "rectify_auto_trigger_key_deduction",
               "key_deduction_item_ids", "key_deduction_threshold_score",
-              "repeat_rectify_threshold"):
+              "repeat_rectify_threshold",
+              "recurrence_observation_days", "recurrence_criteria", "recurrence_alert_threshold"):
         if k in body:
             cfg[k] = body[k]
+    if "recurrence_criteria" in body:
+        valid_criteria = ("seat_group_item", "agent_item", "seat_group_any", "business_line_item")
+        if body["recurrence_criteria"] not in valid_criteria:
+            return fail(f"recurrence_criteria 必须为以下之一: {', '.join(valid_criteria)}")
     storage.write("config", cfg)
     return ok(cfg, "配置已更新")
 

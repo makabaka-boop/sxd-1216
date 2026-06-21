@@ -381,3 +381,221 @@ def rectification_list():
     for r in items:
         enrich_rectification(r)
     return ok({"items": items, "total": len(items)})
+
+
+@bp.get("/recurrence-overview")
+@login_required
+def recurrence_overview():
+    args = parse_args()
+    from inspection_common import detect_inspection_recurrence
+    inspections = filter_inspections(storage.read("inspections"), args)
+    total = len(inspections)
+    recurrence_count = 0
+    total_recurrence_times = 0
+    item_recurrence = defaultdict(lambda: {
+        "item_id": None, "item_name": None, "count": 0, "deducted_sum": 0.0
+    })
+    for insp in inspections:
+        info = detect_inspection_recurrence(insp)
+        if info["is_recurrence"]:
+            recurrence_count += 1
+            total_recurrence_times += info["recurrence_count"]
+            for it in info.get("recurrence_items") or []:
+                key = it.get("item_id") or "unknown"
+                b = item_recurrence[key]
+                b["item_id"] = key
+                b["item_name"] = it.get("item_name") or b["item_name"]
+                b["count"] += 1
+                b["deducted_sum"] += float(it.get("deducted_b", 0) or 0)
+    top_items = sorted(item_recurrence.values(), key=lambda x: x["count"], reverse=True)[:10]
+    for it in top_items:
+        it["deducted_sum"] = round(it["deducted_sum"], 2)
+    return ok({
+        "total_inspections": total,
+        "recurrence_count": recurrence_count,
+        "recurrence_ratio": round(recurrence_count / max(total, 1), 4),
+        "avg_recurrence_times": round(total_recurrence_times / max(recurrence_count, 1), 2) if recurrence_count else 0,
+        "top_recurrence_items": top_items,
+    })
+
+
+@bp.get("/recurrence-by-business-line")
+@login_required
+def recurrence_by_business_line():
+    args = parse_args()
+    from inspection_common import detect_inspection_recurrence
+    inspections = filter_inspections(storage.read("inspections"), args)
+    grouped = defaultdict(lambda: {
+        "business_line_id": None,
+        "business_line_name": None,
+        "total_inspections": 0,
+        "recurrence_count": 0,
+        "total_recurrence_times": 0,
+        "items": defaultdict(lambda: {"item_id": None, "item_name": None, "count": 0}),
+    })
+    for insp in inspections:
+        bl_id = insp.get("business_line_id") or "unknown"
+        g = grouped[bl_id]
+        g["business_line_id"] = bl_id if bl_id != "unknown" else None
+        g["business_line_name"] = name_of("business_lines", bl_id) if bl_id != "unknown" else "未分配"
+        g["total_inspections"] += 1
+        info = detect_inspection_recurrence(insp)
+        if info["is_recurrence"]:
+            g["recurrence_count"] += 1
+            g["total_recurrence_times"] += info["recurrence_count"]
+            for it in info.get("recurrence_items") or []:
+                key = it.get("item_id") or "unknown"
+                ib = g["items"][key]
+                ib["item_id"] = key
+                ib["item_name"] = it.get("item_name") or ib["item_name"]
+                ib["count"] += 1
+    rows = []
+    for bl_id, g in grouped.items():
+        top_items = sorted(g["items"].values(), key=lambda x: x["count"], reverse=True)[:5]
+        rows.append({
+            "business_line_id": g["business_line_id"],
+            "business_line_name": g["business_line_name"],
+            "total_inspections": g["total_inspections"],
+            "recurrence_count": g["recurrence_count"],
+            "recurrence_ratio": round(g["recurrence_count"] / max(g["total_inspections"], 1), 4),
+            "avg_recurrence_times": round(g["total_recurrence_times"] / max(g["recurrence_count"], 1), 2) if g["recurrence_count"] else 0,
+            "top_recurrence_items": top_items,
+        })
+    rows.sort(key=lambda r: r["recurrence_ratio"], reverse=True)
+    return ok({"items": rows, "total_groups": len(rows)})
+
+
+@bp.get("/recurrence-by-seat-group")
+@login_required
+def recurrence_by_seat_group():
+    args = parse_args()
+    from inspection_common import detect_inspection_recurrence
+    inspections = filter_inspections(storage.read("inspections"), args)
+    grouped = defaultdict(lambda: {
+        "seat_group_id": None,
+        "seat_group_name": None,
+        "business_line_id": None,
+        "business_line_name": None,
+        "total_inspections": 0,
+        "recurrence_count": 0,
+        "total_recurrence_times": 0,
+        "items": defaultdict(lambda: {"item_id": None, "item_name": None, "count": 0}),
+    })
+    for insp in inspections:
+        sg_id = insp.get("seat_group_id") or "unknown"
+        g = grouped[sg_id]
+        g["seat_group_id"] = sg_id if sg_id != "unknown" else None
+        g["seat_group_name"] = name_of("seat_groups", sg_id) if sg_id != "unknown" else "未分配"
+        g["business_line_id"] = insp.get("business_line_id")
+        g["business_line_name"] = name_of("business_lines", insp.get("business_line_id"))
+        g["total_inspections"] += 1
+        info = detect_inspection_recurrence(insp)
+        if info["is_recurrence"]:
+            g["recurrence_count"] += 1
+            g["total_recurrence_times"] += info["recurrence_count"]
+            for it in info.get("recurrence_items") or []:
+                key = it.get("item_id") or "unknown"
+                ib = g["items"][key]
+                ib["item_id"] = key
+                ib["item_name"] = it.get("item_name") or ib["item_name"]
+                ib["count"] += 1
+    rows = []
+    for sg_id, g in grouped.items():
+        top_items = sorted(g["items"].values(), key=lambda x: x["count"], reverse=True)[:5]
+        rows.append({
+            "seat_group_id": g["seat_group_id"],
+            "seat_group_name": g["seat_group_name"],
+            "business_line_id": g["business_line_id"],
+            "business_line_name": g["business_line_name"],
+            "total_inspections": g["total_inspections"],
+            "recurrence_count": g["recurrence_count"],
+            "recurrence_ratio": round(g["recurrence_count"] / max(g["total_inspections"], 1), 4),
+            "avg_recurrence_times": round(g["total_recurrence_times"] / max(g["recurrence_count"], 1), 2) if g["recurrence_count"] else 0,
+            "top_recurrence_items": top_items,
+        })
+    rows.sort(key=lambda r: r["recurrence_ratio"], reverse=True)
+    return ok({"items": rows, "total_groups": len(rows)})
+
+
+@bp.get("/recurrence-by-item")
+@login_required
+def recurrence_by_item():
+    args = parse_args()
+    from inspection_common import detect_inspection_recurrence
+    inspections = filter_inspections(storage.read("inspections"), args)
+    grouped = defaultdict(lambda: {
+        "item_id": None,
+        "item_name": None,
+        "recurrence_count": 0,
+        "affected_seat_groups": set(),
+        "affected_inspections": set(),
+        "deducted_sum": 0.0,
+    })
+    for insp in inspections:
+        info = detect_inspection_recurrence(insp)
+        if not info["is_recurrence"]:
+            continue
+        sg_id = insp.get("seat_group_id") or "unknown"
+        for it in info.get("recurrence_items") or []:
+            key = it.get("item_id") or "unknown"
+            g = grouped[key]
+            g["item_id"] = key
+            g["item_name"] = it.get("item_name") or g["item_name"]
+            g["recurrence_count"] += 1
+            g["affected_seat_groups"].add(sg_id)
+            g["affected_inspections"].add(insp.get("id"))
+            g["deducted_sum"] += float(it.get("deducted_b", 0) or 0)
+    rows = []
+    for item_id, g in grouped.items():
+        rows.append({
+            "item_id": g["item_id"],
+            "item_name": g["item_name"],
+            "recurrence_count": g["recurrence_count"],
+            "affected_seat_group_count": len(g["affected_seat_groups"]),
+            "affected_inspection_count": len(g["affected_inspections"]),
+            "total_deducted": round(g["deducted_sum"], 2),
+        })
+    rows.sort(key=lambda r: r["recurrence_count"], reverse=True)
+    return ok({"items": rows, "total_items": len(rows)})
+
+
+@bp.get("/recurrence-trend")
+@login_required
+def recurrence_trend():
+    args = parse_args()
+    from inspection_common import detect_inspection_recurrence
+    inspections = filter_inspections(storage.read("inspections"), args)
+    grouped = defaultdict(lambda: {
+        "date": None,
+        "total_inspections": 0,
+        "recurrence_count": 0,
+        "items": defaultdict(lambda: {"item_id": None, "item_name": None, "count": 0}),
+    })
+    for insp in inspections:
+        day = (insp.get("created_at") or "")[:10]
+        if not day:
+            continue
+        g = grouped[day]
+        g["date"] = day
+        g["total_inspections"] += 1
+        info = detect_inspection_recurrence(insp)
+        if info["is_recurrence"]:
+            g["recurrence_count"] += 1
+            for it in info.get("recurrence_items") or []:
+                key = it.get("item_id") or "unknown"
+                ib = g["items"][key]
+                ib["item_id"] = key
+                ib["item_name"] = it.get("item_name") or ib["item_name"]
+                ib["count"] += 1
+    trend = []
+    for day in sorted(grouped.keys()):
+        g = grouped[day]
+        top_items = sorted(g["items"].values(), key=lambda x: x["count"], reverse=True)[:3]
+        trend.append({
+            "date": g["date"],
+            "total_inspections": g["total_inspections"],
+            "recurrence_count": g["recurrence_count"],
+            "recurrence_ratio": round(g["recurrence_count"] / max(g["total_inspections"], 1), 4),
+            "top_items": top_items,
+        })
+    return ok({"trend": trend, "total_days": len(trend)})

@@ -64,6 +64,7 @@ def enrich_inspection(inspection):
     else:
         inspection["latest_rectification_status"] = None
         inspection["latest_rectification_status_label"] = None
+    enrich_inspection_recurrence(inspection)
     return inspection
 
 
@@ -102,6 +103,7 @@ def enrich_rectification(rectification):
     review = storage.find_one("reviews", lambda r: r.get("inspection_id") == rectification.get("inspection_id"))
     rectification["review_id"] = review.get("id") if review else None
     _update_overdue_status(rectification)
+    enrich_rectification_recurrence(rectification)
     return rectification
 
 
@@ -321,3 +323,203 @@ def _build_rectification_description(inspection, triggers):
     if inspection.get("suggestion"):
         lines.append(f"质检建议：{inspection['suggestion']}")
     return "\n".join(lines)
+
+
+def _recurrence_config():
+    cfg = storage.read("config") or {}
+    return {
+        "observation_days": int(cfg.get("recurrence_observation_days", 30)),
+        "criteria": cfg.get("recurrence_criteria", "seat_group_item"),
+        "alert_threshold": int(cfg.get("recurrence_alert_threshold", 2)),
+    }
+
+
+def _within_observation(target_date_str, observation_days):
+    if not target_date_str:
+        return False
+    try:
+        target = datetime.fromisoformat(target_date_str)
+    except Exception:
+        return False
+    now = datetime.now()
+    delta = now - target
+    return delta.total_seconds() <= observation_days * 24 * 3600
+
+
+def _match_criteria(criteria, rect_a, rect_b, inspection_a, inspection_b):
+    if criteria == "seat_group_item":
+        sg_a = rect_a.get("seat_group_id") or inspection_a.get("seat_group_id")
+        sg_b = rect_b.get("seat_group_id") or inspection_b.get("seat_group_id")
+        if sg_a != sg_b:
+            return False
+        items_a = {d.get("item_id") for d in (inspection_a.get("deductions") or [])}
+        items_b = {d.get("item_id") for d in (inspection_b.get("deductions") or [])}
+        return bool(items_a & items_b)
+    elif criteria == "agent_item":
+        agent_a = inspection_a.get("agent_name")
+        agent_b = inspection_b.get("agent_name")
+        if agent_a != agent_b or not agent_a:
+            return False
+        items_a = {d.get("item_id") for d in (inspection_a.get("deductions") or [])}
+        items_b = {d.get("item_id") for d in (inspection_b.get("deductions") or [])}
+        return bool(items_a & items_b)
+    elif criteria == "seat_group_any":
+        sg_a = rect_a.get("seat_group_id") or inspection_a.get("seat_group_id")
+        sg_b = rect_b.get("seat_group_id") or inspection_b.get("seat_group_id")
+        return sg_a == sg_b and sg_a is not None
+    elif criteria == "business_line_item":
+        bl_a = rect_a.get("business_line_id") or inspection_a.get("business_line_id")
+        bl_b = rect_b.get("business_line_id") or inspection_b.get("business_line_id")
+        if bl_a != bl_b:
+            return False
+        items_a = {d.get("item_id") for d in (inspection_a.get("deductions") or [])}
+        items_b = {d.get("item_id") for d in (inspection_b.get("deductions") or [])}
+        return bool(items_a & items_b)
+    return False
+
+
+def _overlapping_deduction_items(insp_a, insp_b):
+    items_a = {d.get("item_id"): d for d in (insp_a.get("deductions") or [])}
+    items_b = {d.get("item_id"): d for d in (insp_b.get("deductions") or [])}
+    overlap = []
+    for item_id in items_a:
+        if item_id in items_b:
+            overlap.append({
+                "item_id": item_id,
+                "item_name": items_a[item_id].get("item_name") or items_b[item_id].get("item_name"),
+                "deducted_a": items_a[item_id].get("deducted", 0),
+                "deducted_b": items_b[item_id].get("deducted", 0),
+            })
+    return overlap
+
+
+def detect_inspection_recurrence(inspection):
+    cfg = _recurrence_config()
+    observation_days = cfg["observation_days"]
+    criteria = cfg["criteria"]
+    all_rects = storage.read("rectifications")
+    all_insp = {i["id"]: i for i in storage.read("inspections")}
+    matched = []
+    current_insp_id = inspection.get("id")
+    for r in all_rects:
+        if r.get("inspection_id") == current_insp_id:
+            continue
+        if not _within_observation(r.get("created_at"), observation_days):
+            continue
+        r_insp = all_insp.get(r.get("inspection_id"))
+        if not r_insp:
+            continue
+        dummy_rect = {
+            "seat_group_id": inspection.get("seat_group_id"),
+            "business_line_id": inspection.get("business_line_id"),
+        }
+        if _match_criteria(criteria, dummy_rect, r, inspection, r_insp):
+            overlap_items = _overlapping_deduction_items(inspection, r_insp)
+            matched.append({
+                "rectification": r,
+                "inspection": r_insp,
+                "overlap_items": overlap_items,
+            })
+    if not matched:
+        return {
+            "is_recurrence": False,
+            "recurrence_count": 0,
+            "latest_recurrence_at": None,
+            "recurrence_items": [],
+            "related_rectifications": [],
+        }
+    matched.sort(key=lambda m: m["rectification"].get("created_at", ""), reverse=True)
+    latest = matched[0]
+    all_overlap_items = []
+    seen = set()
+    for m in matched:
+        for it in m["overlap_items"]:
+            if it["item_id"] not in seen:
+                seen.add(it["item_id"])
+                all_overlap_items.append(it)
+    related_rects = []
+    for m in matched:
+        r = m["rectification"]
+        r_insp = m["inspection"]
+        related_rects.append({
+            "rectification_id": r.get("id"),
+            "inspection_id": r.get("inspection_id"),
+            "call_id": r_insp.get("call_id"),
+            "created_at": r.get("created_at"),
+            "status": r.get("status"),
+            "status_label": RectificationStatus.LABELS.get(r.get("status"), r.get("status")),
+            "accept_result": r.get("accept_result"),
+            "overlap_items": m["overlap_items"],
+        })
+    return {
+        "is_recurrence": True,
+        "recurrence_count": len(matched),
+        "latest_recurrence_at": latest["rectification"].get("created_at"),
+        "latest_rectification_id": latest["rectification"].get("id"),
+        "latest_rectification_status": latest["rectification"].get("status"),
+        "latest_rectification_status_label": RectificationStatus.LABELS.get(
+            latest["rectification"].get("status"), latest["rectification"].get("status")
+        ),
+        "latest_accept_result": latest["rectification"].get("accept_result"),
+        "recurrence_items": all_overlap_items,
+        "related_rectifications": related_rects,
+    }
+
+
+def detect_rectification_recurrence(rectification):
+    inspection = storage.find("inspections", rectification.get("inspection_id"))
+    if not inspection:
+        return {
+            "is_recurrence": False,
+            "recurrence_count": 0,
+            "latest_recurrence_at": None,
+            "recurrence_items": [],
+            "related_rectifications": [],
+        }
+    info = detect_inspection_recurrence(inspection)
+    current_id = rectification.get("id")
+    info["related_rectifications"] = [
+        r for r in info["related_rectifications"] if r["rectification_id"] != current_id
+    ]
+    info["recurrence_count"] = len(info["related_rectifications"])
+    if info["recurrence_count"] == 0:
+        info["is_recurrence"] = False
+        info["latest_recurrence_at"] = None
+        info["latest_rectification_id"] = None
+        info["latest_rectification_status"] = None
+        info["latest_rectification_status_label"] = None
+        info["latest_accept_result"] = None
+        info["recurrence_items"] = []
+    return info
+
+
+def enrich_inspection_recurrence(inspection):
+    if not inspection:
+        return inspection
+    info = detect_inspection_recurrence(inspection)
+    inspection["is_recurrence"] = info["is_recurrence"]
+    inspection["recurrence_count"] = info["recurrence_count"]
+    inspection["latest_recurrence_at"] = info.get("latest_recurrence_at")
+    inspection["latest_rectification_id"] = info.get("latest_rectification_id")
+    inspection["latest_rectification_status"] = info.get("latest_rectification_status")
+    inspection["latest_rectification_status_label"] = info.get("latest_rectification_status_label")
+    inspection["latest_accept_result"] = info.get("latest_accept_result")
+    inspection["recurrence_items"] = info.get("recurrence_items", [])
+    inspection["related_rectifications"] = info.get("related_rectifications", [])
+    return inspection
+
+
+def enrich_rectification_recurrence(rectification):
+    if not rectification:
+        return rectification
+    info = detect_rectification_recurrence(rectification)
+    rectification["is_recurrence"] = info["is_recurrence"]
+    rectification["recurrence_count"] = info["recurrence_count"]
+    rectification["latest_recurrence_at"] = info.get("latest_recurrence_at")
+    rectification["latest_rectification_id"] = info.get("latest_rectification_id")
+    rectification["latest_rectification_status"] = info.get("latest_rectification_status")
+    rectification["latest_rectification_status_label"] = info.get("latest_rectification_status_label")
+    rectification["latest_accept_result"] = info.get("latest_accept_result")
+    rectification["recurrence_items"] = info.get("recurrence_items", [])
+    rectification["related_rectifications"] = info.get("related_rectifications", [])
+    return rectification
