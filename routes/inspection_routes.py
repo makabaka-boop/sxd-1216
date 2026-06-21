@@ -4,7 +4,7 @@ from auth import login_required, admin_required
 from constants import Status
 from storage import storage
 from utils import ok, fail, parse_args, paginate, get_json_body
-from inspection_common import enrich_inspection
+from inspection_common import enrich_inspection, auto_create_rectification
 
 bp = Blueprint("inspection", __name__, url_prefix="/api/inspections")
 
@@ -81,5 +81,12 @@ def change_status(record_id):
     if new_status != Status.CLOSED and new_status not in Status.FLOW.get(current, []):
         return fail(f"状态不允许从 {Status.LABELS[current]} 变更为 {Status.LABELS[new_status]}")
     insp = storage.update("inspections", record_id, {"status": new_status})
+    data = {}
+    if new_status == Status.CLOSED:
+        insp = storage.find("inspections", record_id)
+        rect = auto_create_rectification(insp, g.current_user["id"], context="close")
+        if rect:
+            data["rectification"] = rect
     enrich_inspection(insp)
-    return ok(insp, "状态已更新")
+    data["inspection"] = insp
+    return ok(data, "状态已更新")

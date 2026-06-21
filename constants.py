@@ -60,6 +60,62 @@ class Status:
     }
 
 
+class RectificationStatus:
+    PENDING_RECTIFY = "pending_rectify"
+    RECTIFYING = "rectifying"
+    PENDING_ACCEPT = "pending_accept"
+    COMPLETED = "completed"
+    OVERDUE = "overdue"
+
+    ALL = (
+        PENDING_RECTIFY,
+        RECTIFYING,
+        PENDING_ACCEPT,
+        COMPLETED,
+        OVERDUE,
+    )
+    LABELS = {
+        PENDING_RECTIFY: "待整改",
+        RECTIFYING: "整改中",
+        PENDING_ACCEPT: "待验收",
+        COMPLETED: "已完成",
+        OVERDUE: "已逾期",
+    }
+    FLOW = {
+        PENDING_RECTIFY: [RECTIFYING, OVERDUE],
+        RECTIFYING: [PENDING_ACCEPT, OVERDUE],
+        PENDING_ACCEPT: [COMPLETED, RECTIFYING],
+        COMPLETED: [],
+        OVERDUE: [RECTIFYING, COMPLETED],
+    }
+
+
+class RectificationTrigger:
+    LOW_SCORE = "low_score"
+    KEY_DEDUCTION = "key_deduction"
+    REVIEW_UPHELD = "review_upheld"
+    MANUAL = "manual"
+
+    ALL = (LOW_SCORE, KEY_DEDUCTION, REVIEW_UPHELD, MANUAL)
+    LABELS = {
+        LOW_SCORE: "分数低于阈值",
+        KEY_DEDUCTION: "存在重点扣分项",
+        REVIEW_UPHELD: "复核维持原结论",
+        MANUAL: "手动发起",
+    }
+
+
+class RectificationAcceptResult:
+    PASS = "pass"
+    REJECT = "reject"
+
+    ALL = (PASS, REJECT)
+    LABELS = {
+        PASS: "验收通过",
+        REJECT: "验收驳回",
+    }
+
+
 DEFAULT_CONFIG = {
     "sampling_ratio": 0.1,
     "appeal_deadline_hours": 48,
@@ -68,6 +124,12 @@ DEFAULT_CONFIG = {
     "risk_low_score_ratio": 0.3,
     "risk_min_sample": 3,
     "frequent_item_threshold": 3,
+    "rectify_deadline_hours": 72,
+    "rectify_auto_trigger_low_score": True,
+    "rectify_auto_trigger_key_deduction": True,
+    "key_deduction_item_ids": [],
+    "key_deduction_threshold_score": 5,
+    "repeat_rectify_threshold": 2,
 }
 
 DATA_FILES = {
@@ -78,5 +140,6 @@ DATA_FILES = {
     "inspections": "inspections.json",
     "appeals": "appeals.json",
     "reviews": "reviews.json",
+    "rectifications": "rectifications.json",
     "config": "config.json",
 }

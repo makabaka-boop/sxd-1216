@@ -4,6 +4,7 @@ from datetime import datetime
 from flask import Blueprint
 
 from auth import login_required
+from constants import RectificationStatus
 from storage import storage
 from utils import ok, parse_args, name_of
 from inspection_common import filter_inspections, enrich_inspection, enrich_appeal
@@ -13,6 +14,37 @@ bp = Blueprint("stats", __name__, url_prefix="/api/stats")
 
 def _cfg():
     return storage.read("config") or {}
+
+
+def _filter_rectifications(rectifications, args):
+    items = list(rectifications)
+    if args.get("business_line_id"):
+        items = [r for r in items if r.get("business_line_id") == args["business_line_id"]]
+    if args.get("seat_group_id"):
+        items = [r for r in items if r.get("seat_group_id") == args["seat_group_id"]]
+    if args.get("assignee_id"):
+        items = [r for r in items if r.get("assignee_id") == args["assignee_id"]]
+    if args.get("responsible_user_id"):
+        items = [r for r in items if r.get("responsible_user_id") == args["responsible_user_id"]]
+    if args.get("status"):
+        statuses = args["status"].split(",")
+        items = [r for r in items if r.get("status") in statuses]
+    if args.get("start_date"):
+        items = [r for r in items if r.get("created_at", "") >= args["start_date"]]
+    if args.get("end_date"):
+        items = [r for r in items if r.get("created_at", "") <= args["end_date"]]
+    return items
+
+
+def _duration_hours(start_str, end_str):
+    if not start_str or not end_str:
+        return None
+    try:
+        d1 = datetime.fromisoformat(start_str)
+        d2 = datetime.fromisoformat(end_str)
+        return round((d2 - d1).total_seconds() / 3600, 2)
+    except Exception:
+        return None
 
 
 @bp.get("/deduction-ranking")
@@ -122,3 +154,230 @@ def seat_group_trends():
         })
     result.sort(key=lambda r: r["avg_score"])
     return ok({"items": result})
+
+
+@bp.get("/rectification-overview")
+@login_required
+def rectification_overview():
+    args = parse_args()
+    rectifications = _filter_rectifications(storage.read("rectifications"), args)
+    now = datetime.now().isoformat(timespec="seconds")
+
+    total = len(rectifications)
+    completed = sum(1 for r in rectifications if r.get("status") == RectificationStatus.COMPLETED)
+    pending = sum(1 for r in rectifications if r.get("status") == RectificationStatus.PENDING_RECTIFY)
+    rectifying = sum(1 for r in rectifications if r.get("status") == RectificationStatus.RECTIFYING)
+    pending_accept = sum(1 for r in rectifications if r.get("status") == RectificationStatus.PENDING_ACCEPT)
+    overdue_status = sum(1 for r in rectifications if r.get("status") == RectificationStatus.OVERDUE)
+    overdue_count = sum(
+        1 for r in rectifications
+        if r.get("plan_deadline") and r.get("plan_deadline") < now
+        and r.get("status") != RectificationStatus.COMPLETED
+    )
+
+    durations = []
+    for r in rectifications:
+        if r.get("status") == RectificationStatus.COMPLETED and r.get("submitted_at"):
+            start = r.get("created_at")
+            end = r.get("accepted_at") or r.get("submitted_at")
+            d = _duration_hours(start, end)
+            if d is not None:
+                durations.append(d)
+
+    avg_duration = round(sum(durations) / len(durations), 2) if durations else 0.0
+
+    summary = {
+        "total": total,
+        "pending_rectify": pending,
+        "rectifying": rectifying,
+        "pending_accept": pending_accept,
+        "completed": completed,
+        "overdue_status": overdue_status,
+        "overdue_count": overdue_count,
+        "completion_rate": round(completed / total, 4) if total else 0.0,
+        "avg_rectify_duration_hours": avg_duration,
+        "total_reject_count": sum(int(r.get("reject_count") or 0) for r in rectifications),
+    }
+    return ok(summary)
+
+
+@bp.get("/rectification-by-business-line")
+@login_required
+def rectification_by_business_line():
+    args = parse_args()
+    rectifications = _filter_rectifications(storage.read("rectifications"), args)
+    now = datetime.now().isoformat(timespec="seconds")
+
+    grouped = defaultdict(lambda: {
+        "total": 0, "completed": 0, "pending_rectify": 0, "rectifying": 0,
+        "pending_accept": 0, "overdue": 0, "durations": [],
+    })
+    for r in rectifications:
+        bl_id = r.get("business_line_id") or "unknown"
+        g = grouped[bl_id]
+        g["total"] += 1
+        status = r.get("status")
+        if status == RectificationStatus.COMPLETED:
+            g["completed"] += 1
+        elif status == RectificationStatus.PENDING_RECTIFY:
+            g["pending_rectify"] += 1
+        elif status == RectificationStatus.RECTIFYING:
+            g["rectifying"] += 1
+        elif status == RectificationStatus.PENDING_ACCEPT:
+            g["pending_accept"] += 1
+        if (r.get("plan_deadline") and r.get("plan_deadline") < now
+                and status != RectificationStatus.COMPLETED):
+            g["overdue"] += 1
+        if status == RectificationStatus.COMPLETED and r.get("submitted_at"):
+            d = _duration_hours(r.get("created_at"), r.get("accepted_at") or r.get("submitted_at"))
+            if d is not None:
+                g["durations"].append(d)
+
+    rows = []
+    for bl_id, g in grouped.items():
+        durations = g["durations"]
+        avg_d = round(sum(durations) / len(durations), 2) if durations else 0.0
+        rows.append({
+            "business_line_id": bl_id if bl_id != "unknown" else None,
+            "business_line_name": name_of("business_lines", bl_id) if bl_id != "unknown" else "未分配",
+            "total": g["total"],
+            "completed": g["completed"],
+            "pending_rectify": g["pending_rectify"],
+            "rectifying": g["rectifying"],
+            "pending_accept": g["pending_accept"],
+            "overdue": g["overdue"],
+            "completion_rate": round(g["completed"] / g["total"], 4) if g["total"] else 0.0,
+            "avg_rectify_duration_hours": avg_d,
+        })
+    rows.sort(key=lambda r: r["completion_rate"])
+    return ok({"items": rows, "total_groups": len(rows)})
+
+
+@bp.get("/rectification-by-seat-group")
+@login_required
+def rectification_by_seat_group():
+    args = parse_args()
+    rectifications = _filter_rectifications(storage.read("rectifications"), args)
+    now = datetime.now().isoformat(timespec="seconds")
+
+    grouped = defaultdict(lambda: {
+        "total": 0, "completed": 0, "pending_rectify": 0, "rectifying": 0,
+        "pending_accept": 0, "overdue": 0, "durations": [],
+    })
+    for r in rectifications:
+        sg_id = r.get("seat_group_id") or "unknown"
+        g = grouped[sg_id]
+        g["total"] += 1
+        status = r.get("status")
+        if status == RectificationStatus.COMPLETED:
+            g["completed"] += 1
+        elif status == RectificationStatus.PENDING_RECTIFY:
+            g["pending_rectify"] += 1
+        elif status == RectificationStatus.RECTIFYING:
+            g["rectifying"] += 1
+        elif status == RectificationStatus.PENDING_ACCEPT:
+            g["pending_accept"] += 1
+        if (r.get("plan_deadline") and r.get("plan_deadline") < now
+                and status != RectificationStatus.COMPLETED):
+            g["overdue"] += 1
+        if status == RectificationStatus.COMPLETED and r.get("submitted_at"):
+            d = _duration_hours(r.get("created_at"), r.get("accepted_at") or r.get("submitted_at"))
+            if d is not None:
+                g["durations"].append(d)
+
+    rows = []
+    for sg_id, g in grouped.items():
+        durations = g["durations"]
+        avg_d = round(sum(durations) / len(durations), 2) if durations else 0.0
+        rows.append({
+            "seat_group_id": sg_id if sg_id != "unknown" else None,
+            "seat_group_name": name_of("seat_groups", sg_id) if sg_id != "unknown" else "未分配",
+            "business_line_id": None,
+            "business_line_name": None,
+            "total": g["total"],
+            "completed": g["completed"],
+            "pending_rectify": g["pending_rectify"],
+            "rectifying": g["rectifying"],
+            "pending_accept": g["pending_accept"],
+            "overdue": g["overdue"],
+            "completion_rate": round(g["completed"] / g["total"], 4) if g["total"] else 0.0,
+            "avg_rectify_duration_hours": avg_d,
+        })
+    for row in rows:
+        sg = storage.find("seat_groups", row["seat_group_id"]) if row["seat_group_id"] else None
+        if sg:
+            row["business_line_id"] = sg.get("business_line_id")
+            row["business_line_name"] = name_of("business_lines", sg.get("business_line_id"))
+    rows.sort(key=lambda r: r["completion_rate"])
+    return ok({"items": rows, "total_groups": len(rows)})
+
+
+@bp.get("/rectification-by-responsible")
+@login_required
+def rectification_by_responsible():
+    args = parse_args()
+    rectifications = _filter_rectifications(storage.read("rectifications"), args)
+    now = datetime.now().isoformat(timespec="seconds")
+
+    grouped = defaultdict(lambda: {
+        "total": 0, "completed": 0, "pending_rectify": 0, "rectifying": 0,
+        "pending_accept": 0, "overdue": 0, "durations": [],
+    })
+    for r in rectifications:
+        user_id = r.get("responsible_user_id") or r.get("assignee_id") or "unknown"
+        g = grouped[user_id]
+        g["total"] += 1
+        status = r.get("status")
+        if status == RectificationStatus.COMPLETED:
+            g["completed"] += 1
+        elif status == RectificationStatus.PENDING_RECTIFY:
+            g["pending_rectify"] += 1
+        elif status == RectificationStatus.RECTIFYING:
+            g["rectifying"] += 1
+        elif status == RectificationStatus.PENDING_ACCEPT:
+            g["pending_accept"] += 1
+        if (r.get("plan_deadline") and r.get("plan_deadline") < now
+                and status != RectificationStatus.COMPLETED):
+            g["overdue"] += 1
+        if status == RectificationStatus.COMPLETED and r.get("submitted_at"):
+            d = _duration_hours(r.get("created_at"), r.get("accepted_at") or r.get("submitted_at"))
+            if d is not None:
+                g["durations"].append(d)
+
+    rows = []
+    for user_id, g in grouped.items():
+        durations = g["durations"]
+        avg_d = round(sum(durations) / len(durations), 2) if durations else 0.0
+        user = storage.find("users", user_id) if user_id != "unknown" else None
+        seat_group_id = user.get("seat_group_id") if user else None
+        rows.append({
+            "responsible_user_id": user_id if user_id != "unknown" else None,
+            "responsible_user_name": user.get("name") if user else "未指定",
+            "role": user.get("role") if user else None,
+            "seat_group_id": seat_group_id,
+            "seat_group_name": name_of("seat_groups", seat_group_id),
+            "business_line_id": user.get("business_line_id") if user else None,
+            "business_line_name": name_of("business_lines", user.get("business_line_id")) if user else None,
+            "total": g["total"],
+            "completed": g["completed"],
+            "pending_rectify": g["pending_rectify"],
+            "rectifying": g["rectifying"],
+            "pending_accept": g["pending_accept"],
+            "overdue": g["overdue"],
+            "completion_rate": round(g["completed"] / g["total"], 4) if g["total"] else 0.0,
+            "avg_rectify_duration_hours": avg_d,
+        })
+    rows.sort(key=lambda r: r["completion_rate"])
+    return ok({"items": rows, "total_users": len(rows)})
+
+
+@bp.get("/rectification-list")
+@login_required
+def rectification_list():
+    args = parse_args()
+    items = _filter_rectifications(storage.read("rectifications"), args)
+    items.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    from inspection_common import enrich_rectification
+    for r in items:
+        enrich_rectification(r)
+    return ok({"items": items, "total": len(items)})

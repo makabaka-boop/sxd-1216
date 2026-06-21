@@ -5,5 +5,11 @@
   "low_score_threshold": 80,
   "risk_low_score_ratio": 0.3,
   "risk_min_sample": 3,
-  "frequent_item_threshold": 3
+  "frequent_item_threshold": 3,
+  "rectify_deadline_hours": 72,
+  "rectify_auto_trigger_low_score": true,
+  "rectify_auto_trigger_key_deduction": true,
+  "key_deduction_item_ids": [],
+  "key_deduction_threshold_score": 5,
+  "repeat_rectify_threshold": 2
 }

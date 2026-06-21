@@ -204,7 +204,11 @@ def update_config():
     body = get_json_body()
     cfg = storage.read("config") or {}
     for k in ("sampling_ratio", "appeal_deadline_hours", "review_deadline_hours",
-              "low_score_threshold", "risk_low_score_ratio", "risk_min_sample"):
+              "low_score_threshold", "risk_low_score_ratio", "risk_min_sample",
+              "frequent_item_threshold", "rectify_deadline_hours",
+              "rectify_auto_trigger_low_score", "rectify_auto_trigger_key_deduction",
+              "key_deduction_item_ids", "key_deduction_threshold_score",
+              "repeat_rectify_threshold"):
         if k in body:
             cfg[k] = body[k]
     storage.write("config", cfg)

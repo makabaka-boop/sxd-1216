@@ -4,7 +4,7 @@ from auth import inspector_required, login_required
 from constants import Status
 from storage import storage, gen_id, now_iso
 from utils import ok, fail, get_json_body, parse_args, paginate
-from inspection_common import compute_total_score, get_scoring_table, enrich_inspection
+from inspection_common import compute_total_score, get_scoring_table, enrich_inspection, auto_create_rectification
 
 bp = Blueprint("inspector", __name__, url_prefix="/api/inspector")
 

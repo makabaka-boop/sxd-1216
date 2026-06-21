@@ -6,7 +6,7 @@ from auth import team_lead_required, login_required, role_required, admin_requir
 from constants import Status, Role
 from storage import storage, gen_id, now_iso
 from utils import ok, fail, get_json_body, parse_args, paginate, name_of
-from inspection_common import enrich_appeal
+from inspection_common import enrich_appeal, auto_create_rectification
 
 bp = Blueprint("appeal", __name__, url_prefix="/api/appeals")
 
@@ -134,5 +134,10 @@ def close_appeal(record_id):
         "closed_at": now_iso(),
     })
     storage.update("inspections", appeal["inspection_id"], {"status": Status.CLOSED})
+    insp = storage.find("inspections", appeal["inspection_id"])
+    rect = auto_create_rectification(insp, g.current_user["id"], context="close")
     enrich_appeal(appeal)
-    return ok(appeal, "申诉已结案")
+    data = {"appeal": appeal}
+    if rect:
+        data["rectification"] = rect
+    return ok(data, "申诉已结案")

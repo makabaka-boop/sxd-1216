@@ -4,10 +4,10 @@ from datetime import datetime
 from flask import Blueprint
 
 from auth import login_required
-from constants import Status
+from constants import Status, RectificationStatus, RectificationTrigger
 from storage import storage
 from utils import ok, parse_args, name_of
-from inspection_common import filter_inspections
+from inspection_common import filter_inspections, enrich_rectification
 
 bp = Blueprint("risk", __name__, url_prefix="/api/risk")
 
@@ -25,6 +25,7 @@ def alerts():
     risk_ratio = float(cfg.get("risk_low_score_ratio", 0.3))
     min_sample = int(cfg.get("risk_min_sample", 3))
     frequent_threshold = int(cfg.get("frequent_item_threshold", 3))
+    repeat_threshold = int(cfg.get("repeat_rectify_threshold", 2))
 
     inspections = filter_inspections(storage.read("inspections"), args)
     scored = [i for i in inspections if i.get("total_score") is not None]
@@ -35,6 +36,8 @@ def alerts():
     frequent_items = _frequent_items(scored, frequent_threshold)
     missing_reviews = _missing_reviews(args)
     rising_risks = _rising_seat_group_risk(scored, low_threshold, risk_ratio, min_sample)
+    overdue_rectifications = _overdue_rectifications(args, now)
+    repeat_rectify_issues = _repeat_rectify_issues(args, repeat_threshold)
 
     summary = {
         "low_score_concentration": len(low_score_concentration),
@@ -42,8 +45,11 @@ def alerts():
         "frequent_item_issues": len(frequent_items),
         "missing_review_conclusions": len(missing_reviews),
         "rising_seat_group_risk": len(rising_risks),
+        "overdue_rectifications": len(overdue_rectifications),
+        "repeat_rectify_issues": len(repeat_rectify_issues),
         "total_alerts": (len(low_score_concentration) + len(overdue_appeals)
-                         + len(frequent_items) + len(missing_reviews) + len(rising_risks)),
+                         + len(frequent_items) + len(missing_reviews) + len(rising_risks)
+                         + len(overdue_rectifications) + len(repeat_rectify_issues)),
     }
     return ok({"summary": summary, "alerts": {
         "low_score_concentration": low_score_concentration,
@@ -51,6 +57,8 @@ def alerts():
         "frequent_item_issues": frequent_items,
         "missing_review_conclusions": missing_reviews,
         "rising_seat_group_risk": rising_risks,
+        "overdue_rectifications": overdue_rectifications,
+        "repeat_rectify_issues": repeat_rectify_issues,
     }})
 
 
@@ -104,6 +112,98 @@ def _overdue_appeals(args, now):
             "created_at": a.get("created_at"),
             "status": insp.get("status"),
         })
+    return result
+
+
+def _overdue_rectifications(args, now):
+    rectifications = storage.read("rectifications")
+    result = []
+    for r in rectifications:
+        if r.get("status") == RectificationStatus.COMPLETED:
+            continue
+        deadline = r.get("plan_deadline")
+        if not deadline or deadline >= now:
+            continue
+        if args.get("business_line_id") and r.get("business_line_id") != args["business_line_id"]:
+            continue
+        if args.get("seat_group_id") and r.get("seat_group_id") != args["seat_group_id"]:
+            continue
+        insp = storage.find("inspections", r.get("inspection_id"))
+        overdue_hours = 0
+        try:
+            d1 = datetime.fromisoformat(now)
+            d2 = datetime.fromisoformat(deadline)
+            overdue_hours = round((d1 - d2).total_seconds() / 3600, 1)
+        except Exception:
+            pass
+        result.append({
+            "rectification_id": r["id"],
+            "inspection_id": r.get("inspection_id"),
+            "call_id": insp.get("call_id") if insp else None,
+            "title": r.get("title"),
+            "seat_group_id": r.get("seat_group_id"),
+            "seat_group_name": name_of("seat_groups", r.get("seat_group_id")),
+            "assignee_id": r.get("assignee_id"),
+            "assignee_name": name_of("users", r.get("assignee_id"), "name"),
+            "trigger_reason": r.get("trigger_reason"),
+            "trigger_label": RectificationTrigger.LABELS.get(r.get("trigger_reason"), r.get("trigger_reason")),
+            "status": r.get("status"),
+            "status_label": RectificationStatus.LABELS.get(r.get("status"), r.get("status")),
+            "plan_deadline": deadline,
+            "created_at": r.get("created_at"),
+            "overdue_hours": overdue_hours,
+        })
+    result.sort(key=lambda x: x["overdue_hours"], reverse=True)
+    return result
+
+
+def _repeat_rectify_issues(args, threshold):
+    rectifications = storage.read("rectifications")
+    if args.get("business_line_id"):
+        rectifications = [r for r in rectifications if r.get("business_line_id") == args["business_line_id"]]
+    if args.get("seat_group_id"):
+        rectifications = [r for r in rectifications if r.get("seat_group_id") == args["seat_group_id"]]
+
+    item_rect_map = defaultdict(lambda: {"count": 0, "rect_ids": [], "inspection_ids": set()})
+
+    for r in rectifications:
+        insp = storage.find("inspections", r.get("inspection_id"))
+        if not insp:
+            continue
+        deductions = insp.get("deductions") or []
+        for d in deductions:
+            key = d.get("item_id") or d.get("item_name") or "unknown"
+            bucket = item_rect_map[key]
+            bucket["item_name"] = d.get("item_name") or key
+            bucket["max_deducted"] = max(
+                bucket.get("max_deducted", 0),
+                float(d.get("deducted", 0) or 0)
+            )
+            bucket["count"] += 1
+            bucket["rect_ids"].append(r["id"])
+            bucket["inspection_ids"].add(insp["id"])
+
+    result = []
+    for key, bucket in item_rect_map.items():
+        if bucket["count"] < threshold:
+            continue
+        last_rect = None
+        if bucket["rect_ids"]:
+            last_rect_id = bucket["rect_ids"][-1]
+            last_rect = storage.find("rectifications", last_rect_id)
+        result.append({
+            "item_id": key,
+            "item_name": bucket["item_name"],
+            "rectification_count": bucket["count"],
+            "affected_inspections": len(bucket["inspection_ids"]),
+            "max_deducted": round(bucket.get("max_deducted", 0), 2),
+            "threshold": threshold,
+            "last_rectification_id": last_rect.get("id") if last_rect else None,
+            "last_rectification_status": last_rect.get("status") if last_rect else None,
+            "last_rectification_status_label": RectificationStatus.LABELS.get(last_rect.get("status"), last_rect.get("status")) if last_rect else None,
+            "last_rectification_at": last_rect.get("created_at") if last_rect else None,
+        })
+    result.sort(key=lambda r: r["rectification_count"], reverse=True)
     return result
 
 

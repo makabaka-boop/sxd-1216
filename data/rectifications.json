@@ -1,0 +1,82 @@
+[
+  {
+    "id": "rect_0bf2b270b0d3",
+    "inspection_id": "ins_5473afc642a9",
+    "business_line_id": null,
+    "seat_group_id": null,
+    "initiator_id": "u_8ba6473269ee",
+    "assignee_id": "u_44026b5fb229",
+    "trigger_reason": "low_score",
+    "trigger_reasons": [
+      "low_score",
+      "key_deduction"
+    ],
+    "status": "completed",
+    "title": "分数低于阈值+存在重点扣分项-CALL_VERIFY_001",
+    "description": "关联抽检单号：ins_5473afc642a9\n通话编号：CALL_VERIFY_001\n质检得分：65.0\n扣分项：\n  - 问题解决能力: -15分\n  - 服务态度: -10分\n  - 流程合规: -10分\n质检建议：严重问题，必须整改",
+    "rectify_measures": "1.专项培训 2.案例复盘 3.后续跟进",
+    "responsible_user_id": "u_44026b5fb229",
+    "plan_deadline": "2099-12-31T23:59:59",
+    "rectify_note": "已落实，等待验收",
+    "attachment_link": "http://doc.example.com/rectify-001.pdf",
+    "submitted_at": "2026-06-21T11:38:30",
+    "acceptor_id": "u_8ba6473269ee",
+    "accept_result": "pass",
+    "accept_note": "整改到位",
+    "accepted_at": "2026-06-21T11:38:30",
+    "reminders": [
+      {
+        "reminded_by": "u_8ba6473269ee",
+        "reminded_by_name": "系统管理员",
+        "message": "请抓紧处理",
+        "reminded_at": "2026-06-21T11:38:30"
+      }
+    ],
+    "reject_count": 0,
+    "created_at": "2026-06-21T11:38:30",
+    "updated_at": "2026-06-21T11:38:30",
+    "business_line_name": null,
+    "seat_group_name": null,
+    "initiator_name": "系统管理员",
+    "assignee_name": "客服组长A",
+    "responsible_name": "客服组长A",
+    "acceptor_name": "系统管理员",
+    "status_label": "已完成",
+    "trigger_label": "分数低于阈值",
+    "call_id": "CALL_VERIFY_001",
+    "agent_name": "张三",
+    "inspection_score": 65.0,
+    "appeal_id": null,
+    "review_id": null,
+    "accept_result_label": "验收通过"
+  },
+  {
+    "id": "rect_b31c73a82fd6",
+    "inspection_id": "ins_5473afc642a9",
+    "business_line_id": null,
+    "seat_group_id": null,
+    "initiator_id": "u_8ba6473269ee",
+    "assignee_id": null,
+    "trigger_reason": "manual",
+    "trigger_reasons": [
+      "manual"
+    ],
+    "status": "pending_rectify",
+    "title": "额外手动整改-专项提升",
+    "description": "针对本案例做深度提升",
+    "rectify_measures": null,
+    "responsible_user_id": null,
+    "plan_deadline": "2099-06-30T23:59:59",
+    "rectify_note": null,
+    "attachment_link": null,
+    "submitted_at": null,
+    "acceptor_id": null,
+    "accept_result": null,
+    "accept_note": null,
+    "accepted_at": null,
+    "reminders": [],
+    "reject_count": 0,
+    "created_at": "2026-06-21T11:38:30",
+    "updated_at": "2026-06-21T11:38:30"
+  }
+]

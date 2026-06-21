@@ -11,6 +11,7 @@ from routes.review_routes import bp as review_bp
 from routes.inspection_routes import bp as inspection_bp
 from routes.stats_routes import bp as stats_bp
 from routes.risk_routes import bp as risk_bp
+from routes.rectification_routes import bp as rectification_bp
 
 
 def create_app():
@@ -27,16 +28,18 @@ def create_app():
     app.register_blueprint(inspection_bp)
     app.register_blueprint(stats_bp)
     app.register_blueprint(risk_bp)
+    app.register_blueprint(rectification_bp)
 
     @app.get("/")
     def index():
         return jsonify({
             "name": "客服中心质检抽检系统",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "endpoints": [
                 "/api/auth/login", "/api/auth/me",
                 "/api/admin/*", "/api/inspector/*", "/api/appeals",
                 "/api/reviews", "/api/inspections", "/api/stats/*", "/api/risk/alerts",
+                "/api/rectifications/*",
             ],
             "default_users": {
                 "admin": "admin123",

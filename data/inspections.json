@@ -1,0 +1,50 @@
+[
+  {
+    "id": "ins_5473afc642a9",
+    "call_id": "CALL_VERIFY_001",
+    "business_line_id": null,
+    "seat_group_id": null,
+    "agent_name": "张三",
+    "inspector_id": "u_1648477145bd",
+    "scoring_table_id": "st_e7eadbe1c3ad",
+    "status": "closed",
+    "deductions": [
+      {
+        "item_id": "si_solve",
+        "item_name": "问题解决能力",
+        "deducted": 15,
+        "max_score": 30
+      },
+      {
+        "item_id": "si_attitude",
+        "item_name": "服务态度",
+        "deducted": 10,
+        "max_score": 20
+      },
+      {
+        "item_id": "si_process",
+        "item_name": "流程合规",
+        "deducted": 10,
+        "max_score": 10
+      }
+    ],
+    "service_language_issues": null,
+    "suggestion": "严重问题，必须整改",
+    "relisten": false,
+    "total_score": 65.0,
+    "created_at": "2026-06-21T11:38:30",
+    "inspected_at": "2026-06-21T11:38:30",
+    "submitted_at": "2026-06-21T11:38:30",
+    "updated_at": "2026-06-21T11:38:30",
+    "business_line_name": null,
+    "seat_group_name": null,
+    "inspector_name": "质检员A",
+    "scoring_table_name": "通用质检评分表",
+    "status_label": "待申诉",
+    "appeal_id": null,
+    "rectifications": [],
+    "rectification_count": 0,
+    "latest_rectification_status": null,
+    "latest_rectification_status_label": null
+  }
+]

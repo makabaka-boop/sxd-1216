@@ -4,7 +4,7 @@ from auth import role_required, login_required
 from constants import Status, Role
 from storage import storage, gen_id, now_iso
 from utils import ok, fail, get_json_body, parse_args, paginate
-from inspection_common import enrich_inspection
+from inspection_common import enrich_inspection, auto_create_rectification
 
 bp = Blueprint("review", __name__, url_prefix="/api/reviews")
 
@@ -40,8 +40,13 @@ def submit_review():
     appeal = storage.find_one("appeals", lambda a: a.get("inspection_id") == inspection_id)
     if appeal and not appeal.get("closed_at"):
         storage.update("appeals", appeal["id"], {"closed_at": now_iso()})
+    insp = storage.find("inspections", inspection_id)
+    rect = auto_create_rectification(insp, g.current_user["id"], context="review")
     enrich_inspection(insp)
-    return ok({"review": review, "inspection": insp}, "复核完成，已结案")
+    data = {"review": review, "inspection": insp}
+    if rect:
+        data["rectification"] = rect
+    return ok(data, "复核完成，已结案")
 
 
 @bp.get("")
